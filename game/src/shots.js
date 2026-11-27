@@ -39,6 +39,21 @@ export function autopilot(world, lookahead, slow = false) {
     const dx = knife.x - player.x;
     if (dx > -30 && dx < 320 && knife.y > player.y - TURKEY.height - 90) knifeThreat = true;
   }
+  // A falling knife aimed at the turkey's path: it lands where the turkey
+  // will be, so the turkey has to change pace — dash past it if there is
+  // time, otherwise slow down and let it land ahead. Slowing lets the
+  // farmer close in, so this is a real trade, not a free dodge.
+  let knifeDodge = 'none';
+  const base = Math.min(TURKEY.maxSpeed, TURKEY.baseSpeed + world.state.distance * TURKEY.speedGain);
+  for (const knife of world.state.knives) {
+    if (knife.kind !== 'falling' || knife.vy <= 0) continue;
+    const tImpact = (600 - knife.y) / knife.vy;
+    if (tImpact < 0 || tImpact > 2.2) continue;
+    const predX = player.x + base * tImpact;
+    if (Math.abs(knife.x - predX) > 100) continue;
+    knifeDodge = tImpact > 0.5 ? 'dash' : 'slow';
+    break;
+  }
   // A corn cob just ahead with a clear run to it: push on.
   for (const pickup of world.state.pickups) {
     if (!pickup.taken && pickup.x > player.x && pickup.x - player.x < 220) {
@@ -57,6 +72,38 @@ export function autopilot(world, lookahead, slow = false) {
   const clearAhead = nearest === null || nearestDist > 320;
   if (gap < 110 && player.dashCooldown <= 0 && clearAhead) controls.dash = true;
   if (knifeThreat && player.dashCooldown <= 0 && gap < 200 && clearAhead) controls.dash = true;
+  if (knifeDodge === 'dash' && player.dashCooldown <= 0 && clearAhead) controls.dash = true;
+  // Slow only when the farmer is far enough back that slowing down will
+  // not feed the turkey to him: a knife costs one life, a catch too.
+  if (knifeDodge === 'slow' && !nearest && gap > 300) {
+    controls.left = true;
+    controls.right = false;
+  }
+  // A falling knife about to land just ahead: jump over the impact point.
+  // The blade hits the ground where the turkey would have been, and the
+  // turkey sails over it — jumping is the knife dodge, not just the
+  // fence dodge. The jump is timed to the impact: too early and the
+  // turkey lands on the blade, so it only jumps once the impact is
+  // under 0.75s away. Thrown knives get the same treatment: jump when
+  // the blade is close and at body height.
+  let knifeJump = false;
+  for (const knife of world.state.knives) {
+    if (knife.kind === 'falling' && knife.vy > 0) {
+      const tImpact = (600 - knife.y) / knife.vy;
+      if (tImpact < 0.2 || tImpact > 0.75) continue;
+      const impactX = knife.x + knife.vx * tImpact;
+      if (impactX > player.x + 10 && impactX < player.x + 320) knifeJump = true;
+    } else if (knife.kind === 'thrown') {
+      const relSpeed = knife.vx - base;
+      if (relSpeed <= 0) continue;
+      const tReach = (player.x + 32 - knife.x) / relSpeed;
+      if (tReach < 0.15 || tReach > 0.8) continue;
+      const yAtReach = knife.y + knife.vy * tReach + 250 * tReach * tReach;
+      if (yAtReach > player.y - 130 && yAtReach < player.y + 10) knifeJump = true;
+    }
+    if (knifeJump) break;
+  }
+  if (knifeJump) controls.jump = true;
   if (nearest) {
     // Jump so the turkey's tail clears the far edge while it is still
     // high enough: the jump carries vx * airtime, and the rear must be
@@ -64,7 +111,6 @@ export function autopilot(world, lookahead, slow = false) {
     // trigger therefore depends on the turkey's current speed (which
     // grows with distance and drops in mud) — a fixed distance jumps
     // too early at speed and lands inside wide obstacles.
-    const base = Math.min(TURKEY.maxSpeed, TURKEY.baseSpeed + world.state.distance * TURKEY.speedGain);
     let pace = 1;
     if (controls.left) pace = TURKEY.slowFactor;
     else if (controls.right) pace = TURKEY.pushFactor;
