@@ -51,6 +51,7 @@ export function createWorld(seed = 1) {
       invulnerable: 0,
       hidden: false,
       inMud: false,
+      dustTimer: 0,
     },
     farmer: {
       x: -FARMER.respawnGap,
@@ -69,6 +70,14 @@ export function createWorld(seed = 1) {
 
   function spawnAhead() {
     const ahead = state.player.x + VIEW.width + 500;
+    // Sometimes two fences or bales stand close together: one jump clears
+    // the first and lands the turkey on the second, so the player has to
+    // jump again or dash through. A jump-only player has to think.
+    function maybeDouble(kind, width, height) {
+      if (!rng.chance(0.25)) return;
+      const x2 = state.spawnCursor + rng.range(180, 260);
+      state.obstacles.push({ kind, x: x2, width, height, passed: false });
+    }
     while (state.spawnCursor < ahead) {
       const x = state.spawnCursor;
       const stage = stageAt(x / WORLD.pxPerMetre);
@@ -76,13 +85,24 @@ export function createWorld(seed = 1) {
       if (stage === 2) {
         // The kitchen: ovens to jump, knives raining, little cover.
         // No fences in a kitchen — the hazards are the oven and the knives.
-        if (roll < 0.40) {
+        if (roll < 0.38) {
           state.obstacles.push({ kind: 'oven', x, width: 150, height: 96, passed: false });
-        } else if (roll < 0.62) {
-          state.knives.push({ kind: 'falling', x: x + rng.range(0, 160), y: -30, vx: rng.range(-40, 40), vy: rng.range(260, 330), spin: rng.range(-9, 9), angle: 0 });
-        } else if (roll < 0.74) {
+        } else if (roll < 0.68) {
+          // A falling knife: most are aimed where the turkey will be when
+          // they land (fall time ~2.1s), so the player has to change pace
+          // — slow down and let it land ahead, or dash past it. A few
+          // still fall at random, for variety.
+          const vy = rng.range(260, 330);
+          const fallTime = (GROUND + 30) / vy;
+          const turkeySpeed = Math.min(TURKEY.maxSpeed, TURKEY.baseSpeed + state.distance * TURKEY.speedGain);
+          const aimed = rng.chance(0.35);
+          const kx = aimed
+            ? state.player.x + turkeySpeed * fallTime + rng.range(-60, 60)
+            : x + rng.range(0, 160);
+          state.knives.push({ kind: 'falling', x: kx, y: -30, vx: rng.range(-40, 40), vy, spin: rng.range(-9, 9), angle: 0 });
+        } else if (roll < 0.80) {
           state.pickups.push({ kind: 'corn', x, y: GROUND - 120, taken: false, phase: rng.range(0, 6) });
-        } else if (roll < 0.86) {
+        } else if (roll < 0.90) {
           state.obstacles.push({ kind: 'mud', x, width: 130, height: 18, passed: false });
         } else {
           state.pickups.push({ kind: 'pumpkin', x, y: GROUND - 44, taken: false, phase: rng.range(0, 6) });
@@ -91,19 +111,27 @@ export function createWorld(seed = 1) {
         // Farmyard and barnyard: fences, bales, mud, corn, haystacks.
         if (roll < 0.26) {
           state.obstacles.push({ kind: 'fence', x, width: 56, height: 62, passed: false });
+          maybeDouble('fence', 56, 62);
         } else if (roll < 0.46) {
           state.obstacles.push({ kind: 'bale', x, width: 84, height: 70, passed: false });
+          maybeDouble('bale', 84, 70);
         } else if (roll < 0.58) {
           state.obstacles.push({ kind: 'mud', x, width: 130, height: 18, passed: false });
-        } else if (roll < 0.74) {
+        } else if (roll < 0.70) {
           state.pickups.push({ kind: 'corn', x, y: GROUND - 120, taken: false, phase: rng.range(0, 6) });
-        } else if (roll < 0.86) {
+        } else if (roll < 0.76) {
+          // Golden corn hangs high: worth a jump, and it buys daylight.
+          state.pickups.push({ kind: 'gold', x, y: GROUND - 190, taken: false, phase: rng.range(0, 6) });
+        } else if (roll < 0.84) {
           state.pickups.push({ kind: 'pumpkin', x, y: GROUND - 44, taken: false, phase: rng.range(0, 6) });
         } else {
           state.haystacks.push({ kind: 'haystack', x, width: 130, height: 92, used: false });
         }
       }
-      const gap = rng.range(SPAWN.minGap, SPAWN.maxGap) * (stage === 2 ? 0.95 : 1);
+      // The run gets denser as the stages go on: the farmyard is a warm-up,
+      // the barnyard pushes, the kitchen crowds.
+      const stageFactor = stage === 0 ? 1 : stage === 1 ? 0.9 : 0.88;
+      const gap = rng.range(SPAWN.minGap, SPAWN.maxGap) * stageFactor;
       state.spawnCursor += gap;
     }
   }
@@ -198,6 +226,23 @@ export function createWorld(seed = 1) {
       player.x += (dashing ? TURKEY.dashSpeed : speed * pace) * dt;
       player.runPhase += dt * (dashing ? 26 : 16);
     }
+    // Dust at the turkey's feet while it runs: speed you can see.
+    if (player.onGround && !player.hidden) {
+      player.dustTimer -= dt;
+      if (player.dustTimer <= 0) {
+        player.dustTimer = 0.12;
+        state.particles.push({
+          x: player.x + rng.range(-6, 10),
+          y: GROUND - rng.range(0, 6),
+          vx: rng.range(-90, -40),
+          vy: rng.range(-60, -10),
+          life: rng.range(0.3, 0.55),
+          maxLife: 0.55,
+          colour: '#c9a06a',
+          size: rng.range(2.5, 5),
+        });
+      }
+    }
     if (!player.onGround) {
       player.vy += TURKEY.gravity * dt;
       player.y += player.vy * dt;
@@ -215,7 +260,10 @@ export function createWorld(seed = 1) {
     let farmerSpeed = speed * ratio;
     if (gap > FARMER.catchupGap) farmerSpeed *= FARMER.catchupFactor;
     if (gap < FARMER.closeGap) farmerSpeed *= FARMER.closeFactor;
-    if (player.hidden) farmerSpeed *= 0.25;
+    // Hidden in the hay, the farmer loses the trail: he all but stops,
+    // peering into the wrong haystack. (At 0.25x he still gained ~190px
+    // over a hide, so hiding barely helped at all.)
+    if (player.hidden) farmerSpeed *= 0.05;
     if (farmer.stumbleTimer > 0) {
       farmer.stumbleTimer -= dt;
       farmerSpeed *= 0.4;
@@ -223,14 +271,18 @@ export function createWorld(seed = 1) {
     farmer.x += farmerSpeed * dt;
     farmer.runPhase += dt * 14;
     farmer.throwTimer -= dt;
-    if (farmer.throwTimer <= 0 && gap < 760 && gap > 60) {
+    if (farmer.throwTimer <= 0 && gap < 900 && gap > 60) {
       farmer.throwTimer = FARMER.throwEvery * (state.stage === 2 ? 0.7 : 1);
+      // A thrown knife has to outrun the turkey: it flies at the turkey's
+      // speed plus a margin, flat and fast, so it arrives where the turkey
+      // will be — a knife at the old speed (360) could never catch a turkey
+      // running at 430.
       state.knives.push({
         kind: 'thrown',
         x: farmer.x + FARMER.width,
         y: GROUND - 150,
-        vx: 360,
-        vy: -260,
+        vx: speed + 280,
+        vy: -120,
         spin: 12,
         angle: 0,
       });
@@ -246,8 +298,10 @@ export function createWorld(seed = 1) {
     }
 
     // --- caught? A catch cannot land while the turkey is flashing
-    // invulnerable from a stumble, so one mistake never costs two lives. ---
-    if (player.invulnerable <= 0 && farmer.x + FARMER.width >= player.x + 6) {
+    // invulnerable from a stumble, so one mistake never costs two lives.
+    // And it cannot land while the turkey is hidden in a haystack: the
+    // whole point of hiding is that the farmer loses the trail. ---
+    if (!player.hidden && player.invulnerable <= 0 && farmer.x + FARMER.width >= player.x + 6) {
       state.lives -= 1;
       burst(player.x + 20, player.y - 30, '#fff3d6', 16, 280);
       if (state.lives <= 0) {
@@ -278,7 +332,7 @@ export function createWorld(seed = 1) {
 
     // --- spawn what lies ahead, drop what fell behind ---
     spawnAhead();
-    const camX = player.x - 300;
+    const camX = player.x - 520;
     const keep = (list) => list.filter((e) => e.x + (e.width ?? 60) > camX - 260);
     state.obstacles = keep(state.obstacles);
     state.pickups = keep(state.pickups);
@@ -290,7 +344,8 @@ export function createWorld(seed = 1) {
       knife.x += knife.vx * dt;
       knife.angle += knife.spin * dt;
       if (knife.kind === 'thrown') {
-        knife.vy += 900 * dt;
+        // Flat and fast: a thrown blade arcs gently down onto the turkey.
+        knife.vy += 500 * dt;
         knife.y += knife.vy * dt;
       } else {
         knife.y += knife.vy * dt;
@@ -341,6 +396,9 @@ export function createWorld(seed = 1) {
           // A pumpkin is a feast: points, and a life back if one is missing.
           state.bonusScore += SCORING.pumpkin;
           if (state.lives < TURKEY.lives) state.lives += 1;
+        } else if (pickup.kind === 'gold') {
+          // Golden corn hangs high and pays like a pumpkin, no life back.
+          state.bonusScore += SCORING.goldCorn;
         } else {
           state.bonusScore += SCORING.corn;
         }
@@ -373,7 +431,15 @@ export function createWorld(seed = 1) {
     // Re-seed the generator this world actually steps with: without this,
     // a reset run would keep spawning from the previous run's sequence.
     rng = makeRandom(seed);
-    Object.assign(state, fresh);
+    // Copy the FRESH STATE's fields into the live state object (whose
+    // reference the step function closes over). The old code did
+    // Object.assign(state, fresh) — but fresh is the wrapper {state, step,
+    // reset, ...}, so it only added a nested state.state and left the old
+    // run's score, distance, lives and over flag in place: pressing Enter
+    // after being caught started a "new run" that was frozen on the dead
+    // run's numbers with 0 lives.
+    for (const key of Object.keys(state)) delete state[key];
+    Object.assign(state, fresh.state);
   }
 
   return {
@@ -381,7 +447,7 @@ export function createWorld(seed = 1) {
     step,
     reset,
     cameraX() {
-      return state.player.x - 300;
+      return state.player.x - 520;
     },
     gap() {
       return state.player.x - state.farmer.x;
