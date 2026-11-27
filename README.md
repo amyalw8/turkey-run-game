@@ -16,7 +16,7 @@ Then open http://localhost:8080 in a desktop browser. No build step, no network:
 
 ## How it escapes
 
-The turkey runs on its own; you steer its pace, jump and dash. The farmer runs behind you at a share of your speed — he speeds up when you pull away and eases off when he is on your tail, and he throws carving knives at you. Hitting a fence, a bale, a knife or the oven costs a life and lets him gain ground; three lives and you are caught. Corn buys a little daylight, pumpkins are worth more, and hiding in a haystack makes him lose the trail — but you stop moving while you hide. Each stage pays a bonus, and escaping with lives left pays more. The kitchen is the hard part: ovens to clear and knives raining from above.
+The turkey runs on its own; you steer its pace, jump and dash. The farmer runs right behind you — close enough to see — he speeds up when you pull away and eases off when he is on your tail, and he throws carving knives that can actually catch you now. Hitting a fence, a bale, a knife or the oven costs a life and lets him gain ground; three lives and you are caught. Corn buys a little daylight, golden corn hangs high and pays like a pumpkin, pumpkins are worth more, and hiding in a haystack makes him lose the trail — but you stop moving while you hide. Each stage pays a bonus, and escaping with lives left pays more. The kitchen is the hard part: ovens to clear and knives raining from above. Your best escape is saved and shown on the title screen.
 
 ## Hand it in
 
