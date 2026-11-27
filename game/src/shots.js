@@ -1,0 +1,155 @@
+// Gobble Run — the screenshot scenes behind ?shot=start|run|kitchen|
+// caught|escaped. Each one plays the real rules forward from a fresh
+// world with a fixed seed, steered by a simple autopilot, so the frame
+// is what a short game really looks like and the same seed always gives
+// the same frame. The autopilot only presses the keys a player can.
+import { VIEW, TURKEY, FARMER } from './config.js';
+
+const STEP = 1 / 60;
+const START_SECONDS = 4;
+const RUN_SECONDS = 14;
+const KITCHEN_EXTRA_SECONDS = 7;
+const LIMIT_SECONDS = 150;
+
+/** What the autopilot would do this frame: jump, dash or hold its pace.
+ * `lookahead` is unused by the timing now (the jump trigger is computed
+ * from the turkey's current speed) and kept only for the call signature.
+ * `slow` makes it dawdle (hold Left, never dash): the farmer closes in,
+ * which is how the run screenshot gets the chase into the frame.
+ * Exported so the build's balance checks can drive the real policy. */
+export function autopilot(world, lookahead, slow = false) {
+  const { player, farmer, obstacles, knives, pickups } = world.state;
+  const controls = { left: false, right: false, jump: false, dash: false, hide: false };
+  if (!player.onGround) return controls;
+
+  // The nearest solid thing ahead of the turkey's beak.
+  let nearest = null;
+  let nearestDist = Infinity;
+  for (const obstacle of world.state.obstacles) {
+    if (obstacle.kind === 'mud') continue;
+    const dist = obstacle.x - (player.x + TURKEY.width);
+    if (dist >= -10 && dist < nearestDist) {
+      nearestDist = dist;
+      nearest = obstacle;
+    }
+  }
+  // A knife already in the air, coming at the turkey.
+  let knifeThreat = false;
+  for (const knife of world.state.knives) {
+    const dx = knife.x - player.x;
+    if (dx > -30 && dx < 320 && knife.y > player.y - TURKEY.height - 90) knifeThreat = true;
+  }
+  // A corn cob just ahead with a clear run to it: push on.
+  for (const pickup of world.state.pickups) {
+    if (!pickup.taken && pickup.x > player.x && pickup.x - player.x < 220) {
+      controls.right = true;
+    }
+  }
+  if (slow) {
+    // Dawdle: hold Left, never dash. The jump timing below reads these
+    // same controls, so it still lands its jumps while moving slowly.
+    controls.right = false;
+    controls.left = true;
+    controls.dash = false;
+  }
+  const gap = player.x - farmer.x;
+  // Dash only on open ground: dashing into a fence is worse than walking.
+  const clearAhead = nearest === null || nearestDist > 320;
+  if (gap < 110 && player.dashCooldown <= 0 && clearAhead) controls.dash = true;
+  if (knifeThreat && player.dashCooldown <= 0 && gap < 200 && clearAhead) controls.dash = true;
+  if (nearest) {
+    // Jump so the turkey's tail clears the far edge while it is still
+    // high enough: the jump carries vx * airtime, and the rear must be
+    // past the obstacle before the descent drops below its top. The
+    // trigger therefore depends on the turkey's current speed (which
+    // grows with distance and drops in mud) — a fixed distance jumps
+    // too early at speed and lands inside wide obstacles.
+    const base = Math.min(TURKEY.maxSpeed, TURKEY.baseSpeed + world.state.distance * TURKEY.speedGain);
+    let pace = 1;
+    if (controls.left) pace = TURKEY.slowFactor;
+    else if (controls.right) pace = TURKEY.pushFactor;
+    if (player.inMud) pace *= 0.7;
+    const vx = player.dashTimer > 0 ? TURKEY.dashSpeed : base * pace;
+    const airtime = (2 * Math.abs(TURKEY.jumpVelocity)) / TURKEY.gravity;
+    const carry = vx * airtime * 0.92;
+    const trigger = nearest.kind === 'oven'
+      ? 180 // ovens are too wide to jump alone: jump early and dash through
+      : carry - TURKEY.width - nearest.width - 15;
+    if (nearestDist < trigger) {
+      controls.jump = true;
+      if (nearest.kind === 'oven' && player.dashCooldown <= 0) controls.dash = true;
+    }
+  } else if (knifeThreat) {
+    controls.jump = true;
+  }
+  // Dawdling never dashes, even when the gap logic above asked for one.
+  if (slow) controls.dash = false;
+  return controls;
+}
+
+/** The autopilot that never jumps: a hurried player, caught out fast. */
+function carelessAutopilot(world) {
+  const gap = world.state.player.x - world.state.farmer.x;
+  const controls = { left: false, right: false, jump: false, dash: false, hide: false };
+  if (gap < 110 && world.state.player.dashCooldown <= 0) controls.dash = true;
+  return controls;
+}
+
+function runFor(world, seconds, pilot) {
+  const steps = Math.floor(seconds / STEP);
+  for (let i = 0; i < steps; i += 1) {
+    // A farmer catch that costs a life is not the end: only stop when
+    // the world itself is over (caught for good, or escaped).
+    world.step(STEP, pilot(world));
+    if (world.state.over) return;
+  }
+}
+
+/**
+ * Set `world` to the named scene and return the screen to draw over it
+ * plus the best score to show. Unknown names stage the title scene.
+ */
+export function stageShot(name, world) {
+  world.reset(7);
+  if (name === 'run') {
+    // Mid-game, in the barnyard: play well for a while, then dawdle so
+    // the farmer closes in for a dramatic frame. If the dawdle gets the
+    // turkey caught (or it escapes), fall back to the frame before it.
+    runFor(world, RUN_SECONDS, (w) => autopilot(w, 165));
+    if (!world.state.over) {
+      const snapshot = JSON.parse(JSON.stringify(world.state));
+      for (let i = 0; i < 8 * 60; i += 1) {
+        const gap = world.state.player.x - world.state.farmer.x;
+        if (gap < 300) break; // the farmer is fully on screen
+        if (world.state.distance >= 950) break; // stay in the barnyard
+        world.step(STEP, autopilot(world, 165, true));
+        if (world.state.over) {
+          Object.assign(world.state, JSON.parse(JSON.stringify(snapshot)));
+          break;
+        }
+      }
+    }
+    return { screen: 'play', best: 0 };
+  }
+  if (name === 'kitchen') {
+    // Play well until the kitchen, then a few seconds inside it.
+    for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
+      if (world.state.stage === 2) break;
+      world.step(STEP, autopilot(world, 165));
+      if (world.state.over) break;
+    }
+    runFor(world, KITCHEN_EXTRA_SECONDS, (w) => autopilot(w, 165));
+    return { screen: world.state.over ? 'over' : 'play', best: 0 };
+  }
+  if (name === 'caught') {
+    runFor(world, LIMIT_SECONDS, carelessAutopilot);
+    return { screen: 'over', best: world.state.score };
+  }
+  if (name === 'escaped') {
+    runFor(world, LIMIT_SECONDS, (w) => autopilot(w, 165));
+    return { screen: 'over', best: world.state.score };
+  }
+  // Title: a few seconds in, so the farmyard is alive behind the menu.
+  runFor(world, START_SECONDS, (w) => autopilot(w, 165));
+  return { screen: 'title', best: 0 };
+}
