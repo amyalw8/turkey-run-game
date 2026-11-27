@@ -57,11 +57,63 @@ function drawSky(ctx, camX, stage) {
     ctx.lineWidth = 10;
     ctx.strokeStyle = '#7a5a34';
     ctx.stroke();
+    // A hanging lamp, warm light pooling below it. It hangs low enough
+    // to clear the HUD bar at the top of the screen.
+    ctx.strokeStyle = '#2a1a12';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(430, 92);
+    ctx.lineTo(430, 132);
+    ctx.stroke();
+    ctx.fillStyle = '#3d2a18';
+    ctx.beginPath();
+    ctx.moveTo(396, 132);
+    ctx.lineTo(464, 132);
+    ctx.lineTo(448, 162);
+    ctx.lineTo(412, 162);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 190, 90, 0.16)';
+    ctx.beginPath();
+    ctx.ellipse(430, 280, 150, 120, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // A shelf with plates, and copper pans hanging by the window.
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(90, 300, 260, 12);
+    ctx.fillStyle = '#f5ead0';
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.arc(130 + i * 80, 286, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d9c9a3';
+      ctx.beginPath();
+      ctx.arc(130 + i * 80, 286, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f5ead0';
+    }
+    for (let i = 0; i < 3; i += 1) {
+      const px = 560 + i * 74;
+      ctx.strokeStyle = '#2a1a12';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(px, 190);
+      ctx.lineTo(px, 214);
+      ctx.stroke();
+      ctx.fillStyle = '#b56a2e';
+      ctx.beginPath();
+      ctx.arc(px, 238, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8a4a1e';
+      ctx.beginPath();
+      ctx.arc(px, 238, 15, 0, Math.PI * 2);
+      ctx.fill();
+    }
     return;
   }
 
-  // Low autumn sun and drifting clouds.
-  const sunX = 980 - (camX * 0.05) % 1400;
+  // Low autumn sun and drifting clouds. The sun sits on the left so it
+  // never hides behind the centred title text.
+  const sunX = 180 - (camX * 0.05) % 1400;
   ctx.fillStyle = '#ffe9a8';
   ctx.beginPath();
   ctx.arc(sunX, 150, 46, 0, Math.PI * 2);
@@ -94,19 +146,26 @@ function drawHills(ctx, camX, stage) {
   ctx.lineTo(0, VIEW.height);
   ctx.closePath();
   ctx.fill();
-  // Bare autumn trees on the ridge.
+  // Bare autumn trees on the ridge. They ride the SAME parallax as the
+  // hills (0.25) and stand on the hill line itself: the old trees used a
+  // different parallax and a guessed height, so they floated in mid-air.
+  const hillY = (x) => 470 + Math.sin((x + camX * 0.25) * 0.004) * 46 + Math.sin((x + camX * 0.25) * 0.011) * 18;
   ctx.strokeStyle = '#3d1c38';
   ctx.lineWidth = 7;
   for (let i = 0; i < 5; i += 1) {
-    const tx = ((i * 337 - camX * 0.3) % 1500 + 1500) % 1500 - 80;
-    const ty = 430 + Math.sin((tx + camX * 0.3) * 0.01) * 30;
+    const tx = ((i * 337 - camX * 0.25) % 1500 + 1500) % 1500 - 80;
+    const ty = hillY(tx);
+    ctx.fillStyle = '#4a2138';
+    ellipse(ctx, tx, ty + 2, 34, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#3d1c38';
     ctx.beginPath();
-    ctx.moveTo(tx, ty + 60);
-    ctx.lineTo(tx, ty);
-    ctx.moveTo(tx, ty + 18);
-    ctx.lineTo(tx - 26, ty - 14);
-    ctx.moveTo(tx, ty + 10);
-    ctx.lineTo(tx + 24, ty - 20);
+    ctx.moveTo(tx, ty + 2);
+    ctx.lineTo(tx, ty - 58);
+    ctx.moveTo(tx, ty - 40);
+    ctx.lineTo(tx - 26, ty - 72);
+    ctx.moveTo(tx, ty - 48);
+    ctx.lineTo(tx + 24, ty - 78);
     ctx.stroke();
   }
 }
@@ -142,6 +201,11 @@ function drawBarn(ctx, camX, stage) {
     ctx.lineTo(hx + 180, 422);
     ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = '#2e1a4e';
+    ctx.fillRect(hx + 28, 448, 30, 30);
+    ctx.fillRect(hx + 112, 448, 30, 30);
+    ctx.fillStyle = '#6b4226';
+    ctx.fillRect(hx + 70, 460, 32, 50);
   }
 }
 
@@ -403,6 +467,9 @@ function drawObstacle(ctx, obstacle, time) {
     ctx.fill();
   } else if (kind === 'oven') {
     // A big farmhouse oven, door glowing, chimney puffing.
+    ctx.fillStyle = 'rgba(255, 123, 28, 0.18)';
+    ellipse(ctx, x + width / 2, top + 52, width, 70);
+    ctx.fill();
     ctx.fillStyle = '#3d3d3d';
     roundRect(ctx, x, top, width, height + 4, 8);
     ctx.fill();
@@ -436,6 +503,25 @@ function drawPickup(ctx, pickup, time) {
   const bob = Math.sin(time * 4 + pickup.phase) * 6;
   const x = pickup.x;
   const y = pickup.y + bob;
+  if (pickup.kind === 'gold') {
+    // Golden corn: bright gold, with a sparkle — it hangs high for a reason.
+    ctx.fillStyle = '#ffd60a';
+    ellipse(ctx, x, y, 15, 27);
+    ctx.fill();
+    ctx.fillStyle = '#fff3b0';
+    ellipse(ctx, x - 4, y - 8, 5, 10);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 240, 170, ${0.6 + 0.4 * Math.sin(time * 6 + pickup.phase)})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i += 1) {
+      const a = (i * Math.PI) / 2 + time * 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * 20, y + Math.sin(a) * 20);
+      ctx.lineTo(x + Math.cos(a) * 30, y + Math.sin(a) * 30);
+      ctx.stroke();
+    }
+    return;
+  }
   if (pickup.kind === 'corn') {
     // A corn cob: yellow kernels in rows, green husk leaves at the base.
     ctx.fillStyle = '#2e7d32';
@@ -541,6 +627,34 @@ function drawParticles(ctx, particles) {
   ctx.globalAlpha = 1;
 }
 
+function drawCornRow(ctx, camX, stage) {
+  if (stage === 2) return;
+  // A midground row of corn stalks: fills the empty band between the
+  // hills and the ground, and sells the speed as it scrolls past.
+  const step = 170;
+  const offset = -((camX * 0.55) % step + step) % step;
+  for (let x = offset - step; x < VIEW.width + step; x += step) {
+    const sway = Math.sin((x + camX) * 0.01) * 4;
+    ctx.strokeStyle = '#3f6b2a';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x, GROUND - 4);
+    ctx.quadraticCurveTo(x + sway, GROUND - 44, x + sway * 2, GROUND - 78);
+    ctx.stroke();
+    ctx.strokeStyle = '#557d33';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x, GROUND - 34);
+    ctx.quadraticCurveTo(x - 16, GROUND - 44, x - 26, GROUND - 30);
+    ctx.moveTo(x, GROUND - 52);
+    ctx.quadraticCurveTo(x + 16, GROUND - 62, x + 26, GROUND - 48);
+    ctx.stroke();
+    ctx.fillStyle = '#e8b93e';
+    ellipse(ctx, x + sway * 2 + 6, GROUND - 62, 6, 12);
+    ctx.fill();
+  }
+}
+
 /** Draw the running world. The HUD and screens are drawn by hud.js. */
 export function drawWorld(ctx, state, camX, time) {
   const stage = stageOf(state);
@@ -548,6 +662,7 @@ export function drawWorld(ctx, state, camX, time) {
   drawHills(ctx, camX, stage);
   drawBarn(ctx, camX, stage);
   drawGround(ctx, camX, stage);
+  drawCornRow(ctx, camX, stage);
 
   ctx.save();
   ctx.translate(-camX, 0);
