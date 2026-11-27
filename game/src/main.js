@@ -20,8 +20,16 @@ const input = createInput();
 const world = createWorld(1);
 const STEP = 1 / 60;
 
-let screen = 'title';
+// The best escape survives a reload: the title screen shows it, and the
+// end screen shows whether this run beat it.
 let best = 0;
+try {
+  best = Number(window.localStorage.getItem('gobble-run-best') || 0) || 0;
+} catch {
+  best = 0;
+}
+
+let screen = 'title';
 let banner = null;
 let alarmOn = false;
 let lastTime = 0;
@@ -44,6 +52,11 @@ function startRun() {
 function endRun() {
   screen = 'over';
   best = Math.max(best, world.state.score);
+  try {
+    window.localStorage.setItem('gobble-run-best', String(best));
+  } catch {
+    // Private mode or file:// with no storage: the run still counts.
+  }
   announce(world.state.escaped ? 'Escaped! The turkey made it to the forest.' : 'Caught! The farmer got his turkey.');
 }
 
