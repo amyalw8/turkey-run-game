@@ -157,7 +157,7 @@ export function drawPaused(ctx) {
 
 /** End screen: caught or escaped. */
 export function drawEnd(ctx, state, best, time) {
-  ctx.fillStyle = 'rgba(20, 8, 20, 0.55)';
+  ctx.fillStyle = 'rgba(20, 8, 20, 0.68)';
   ctx.fillRect(0, 0, VIEW.width, VIEW.height);
   if (state.escaped) {
     centred(ctx, 'ESCAPED!', 190, 'bold 88px sans-serif', '#7ee081');
@@ -179,7 +179,7 @@ export function drawEnd(ctx, state, best, time) {
   );
   const pulse = 0.65 + 0.35 * Math.sin(time * 4);
   ctx.globalAlpha = pulse;
-  centred(ctx, 'PRESS ENTER OR CLICK TO RUN AGAIN', 560, 'bold 28px sans-serif', '#ffffff');
+  centred(ctx, 'PRESS ENTER OR CLICK TO RUN AGAIN', 622, 'bold 28px sans-serif', '#ffffff');
   ctx.globalAlpha = 1;
 }
 
