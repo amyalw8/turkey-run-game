@@ -37,20 +37,25 @@ export const TURKEY = {
 export const FARMER = {
   width: 70,
   height: 98,
-  baseRatio: 0.88, // of the turkey's speed
-  kitchenRatio: 0.94,
-  catchupGap: 340, // beyond this gap he speeds up
-  catchupFactor: 1.12,
-  closeGap: 90, // inside this gap he eases off
-  closeFactor: 0.8,
+  // He runs close now: a good run keeps him ~200-260px behind, on screen
+  // (the camera puts the turkey at 520px), so the chase is visible.
+  // When he is far he closes fast (1.15x); when he is on your tail he
+  // eases off — so he hovers at ~200px and any stumble can cost a life.
+  baseRatio: 0.95, // of the turkey's speed
+  kitchenRatio: 0.96,
+  catchupGap: 220, // beyond this gap he speeds up
+  catchupFactor: 1.15,
+  closeGap: 140, // inside this gap he eases off
+  closeFactor: 0.85,
   stumbleGain: 200, // px he gains when the turkey stumbles
-  respawnGap: 620, // px behind after a catch
-  throwEvery: 9.0, // seconds between thrown knives
+  respawnGap: 480, // px behind after a catch
+  throwEvery: 7.0, // seconds between thrown knives
 };
 
 export const SCORING = {
   perMetre: 10,
   corn: 50,
+  goldCorn: 150, // high golden corn: worth a jump to grab
   pumpkin: 150,
   stageBonus: 500,
   escapeBonus: 1000,
