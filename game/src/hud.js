@@ -1,7 +1,7 @@
 // Gobble Run — the HUD (score, distance, lives, dash, farmer meter) and
 // the title, pause and end screens. All text is drawn on the canvas so
 // the screenshots show the whole game, menus included.
-import { VIEW, WORLD, TURKEY } from './config.js';
+import { VIEW, WORLD, TURKEY, COMBO } from './config.js';
 
 function panel(ctx, x, y, w, h, alpha = 0.82) {
   ctx.fillStyle = `rgba(20, 12, 8, ${alpha})`;
@@ -38,6 +38,18 @@ export function drawHud(ctx, state, gap, time) {
   ctx.fillStyle = '#fff3d6';
   ctx.font = 'bold 20px sans-serif';
   ctx.fillText(`${metres} m  /  ${WORLD.escapeMetres} m`, 34, 74);
+
+  // Combo chain: chained pickups pay x2, x3. The badge sits beside the
+  // distance, with a thin bar showing how long the chain has left.
+  if (state.player.combo >= 2) {
+    ctx.fillStyle = '#ffd60a';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`COMBO x${state.player.combo}`, 216, 74);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(216, 79, 80, 5);
+    ctx.fillStyle = '#ffd60a';
+    ctx.fillRect(216, 79, 80 * Math.max(0, state.player.comboTimer / COMBO.windowSeconds), 5);
+  }
 
   // Distance progress with stage marks.
   const barX = 330;
@@ -113,6 +125,7 @@ function controlsBlock(ctx, y) {
     '← →  or  A / D — slow down / push ahead',
     '↑  or  W — jump     SPACE — dash',
     '↓  or  S — hide in a haystack (when close to one)',
+    'The farmer lunges when close — dash away or jump over him',
     'P — pause     M — sound     ENTER — start / restart',
     'Mouse — click to start, too',
   ];
