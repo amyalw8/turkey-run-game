@@ -3,7 +3,7 @@
 // painted by render.js and hud.js. A ?shot=start|run|kitchen|caught|
 // escaped query stages one frozen frame for a screenshot instead.
 import { VIEW } from './config.js';
-import { createWorld, EVENT_HIT, EVENT_CAUGHT, EVENT_ESCAPED, EVENT_STAGE, EVENT_PICKUP, EVENT_BONUS, EVENT_HIDE, EVENT_DASH } from './world.js';
+import { createWorld, EVENT_HIT, EVENT_CAUGHT, EVENT_ESCAPED, EVENT_STAGE, EVENT_PICKUP, EVENT_BONUS, EVENT_HIDE, EVENT_DASH, EVENT_LUNGE, EVENT_SEARCH } from './world.js';
 import { drawWorld } from './render.js';
 import { drawHud, drawTitle, drawPaused, drawEnd, drawBanner } from './hud.js';
 import { createInput } from './input.js';
@@ -66,6 +66,8 @@ function handleEvents(events) {
   if (events & EVENT_BONUS) sounds.bonus();
   if (events & EVENT_HIDE) sounds.hide();
   if (events & EVENT_DASH) sounds.dash();
+  if (events & EVENT_LUNGE) sounds.lunge();
+  if (events & EVENT_SEARCH) sounds.search();
   if (events & EVENT_STAGE) {
     const stage = world.state.stage;
     banner = {
@@ -162,6 +164,8 @@ Object.defineProperty(window, '__gobbleRun', {
       lives: world.state.lives,
       stage: world.state.stage,
       escaped: world.state.escaped,
+      combo: world.state.player.combo,
+      farmerMode: world.state.farmer.mode,
     };
   },
 });
