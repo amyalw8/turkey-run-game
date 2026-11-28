@@ -50,6 +50,29 @@ export const FARMER = {
   stumbleGain: 200, // px he gains when the turkey stumbles
   respawnGap: 480, // px behind after a catch
   throwEvery: 7.0, // seconds between thrown knives
+  // The lunge: when he gets this close he winds up, then bursts forward
+  // to corner the turkey. The wind-up is the warning — dash away, or
+  // jump clean over him, because a lunge never catches a turkey in the air.
+  lungeGap: 215,
+  lungeWindup: 0.4, // seconds of telegraph, standing still
+  lungeSeconds: 0.45, // burst duration
+  lungeFactor: 2.3, // speed multiplier during the burst
+  lungeCooldown: 5.0,
+  // After a lunge that misses, he is winded: he stops, bent over,
+  // while the turkey runs past. That is the reward for dodging.
+  recoverSeconds: 0.7,
+  // The search: when the turkey hides, he walks to a WRONG haystack
+  // behind it and looks around there, never the one the turkey is in.
+  searchSeconds: 2.2, // how long he pokes around the wrong haystack
+  searchSpeed: 0.35, // he walks while searching, never runs
+  searchReach: 600, // farthest wrong haystack he will walk to
+};
+
+// Chaining pickups: each one inside the window raises the multiplier,
+// a hit knocks it back to nothing. Corn is worth grabbing in a row.
+export const COMBO = {
+  windowSeconds: 6.0,
+  maxMultiplier: 3,
 };
 
 export const SCORING = {
