@@ -73,6 +73,23 @@ export function autopilot(world, lookahead, slow = false) {
   if (gap < 110 && player.dashCooldown <= 0 && clearAhead) controls.dash = true;
   if (knifeThreat && player.dashCooldown <= 0 && gap < 200 && clearAhead) controls.dash = true;
   if (knifeDodge === 'dash' && player.dashCooldown <= 0 && clearAhead) controls.dash = true;
+  // A lunge winding up (or already bursting): dash away on open ground,
+  // otherwise jump clean over him — a lunge never catches a turkey in
+  // the air.
+  if (farmer.lungeWindup > 0 || farmer.lungeTimer > 0) {
+    if (player.dashCooldown <= 0 && clearAhead) controls.dash = true;
+    else controls.jump = true;
+  }
+  // Hide when the farmer is breathing down the turkey's neck and a
+  // haystack is right there: he will search the wrong one and lose
+  // ground. Never while dawdling for a screenshot — the dawdle wants
+  // him close in the frame.
+  if (!slow && player.onGround && player.hideCooldown <= 0 && gap < 180) {
+    const nearHay = world.state.haystacks.find(
+      (h) => !h.used && Math.abs(h.x + h.width / 2 - (player.x + TURKEY.width / 2)) < 130,
+    );
+    if (nearHay) controls.hide = true;
+  }
   // Slow only when the farmer is far enough back that slowing down will
   // not feed the turkey to him: a knife costs one life, a catch too.
   if (knifeDodge === 'slow' && !nearest && gap > 300) {
@@ -187,12 +204,57 @@ export function stageShot(name, world) {
     runFor(world, KITCHEN_EXTRA_SECONDS, (w) => autopilot(w, 165));
     return { screen: world.state.over ? 'over' : 'play', best: 0 };
   }
+  if (name === 'search') {
+    // The turkey only hides when a haystack is near while the farmer is
+    // close, which does not happen on every seed: try seeds until one
+    // stages a mid-hide frame, the farmer walking to the wrong haystack
+    // with a "?". (A verification scene, not an entry shot.)
+    for (const seed of [2, 42, 1, 3, 7]) {
+      world.reset(seed);
+      let staged = false;
+      for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
+        const s = world.state;
+        const controls = autopilot(world, 165);
+        if (!s.player.hidden && !s.over) {
+          const gap = s.player.x - s.farmer.x;
+          const near = s.haystacks.find((h) => !h.used && Math.abs(h.x + h.width / 2 - (s.player.x + 32)) < 130);
+          if (near && gap < 250 && s.player.onGround) controls.hide = true;
+        }
+        world.step(STEP, controls);
+        if (world.state.over) break;
+        if (world.state.player.hidden && world.state.farmer.mode === 'search') {
+          // Let him walk a second into the search, then freeze the frame.
+          runFor(world, 1.0, () => ({ left: false, right: false, jump: false, dash: false, hide: false }));
+          staged = true;
+          break;
+        }
+      }
+      if (staged) break;
+    }
+    return { screen: world.state.over ? 'over' : 'play', best: 0 };
+  }
+  if (name === 'lunge') {
+    // Dawdle so the farmer closes in, and freeze the frame the moment
+    // he winds up a lunge ("!!"). (A verification scene, not an entry shot.)
+    for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
+      world.step(STEP, autopilot(world, 165, true));
+      if (world.state.over) break;
+      if (world.state.farmer.lungeWindup > 0) break;
+    }
+    return { screen: world.state.over ? 'over' : 'play', best: 0 };
+  }
   if (name === 'caught') {
     runFor(world, LIMIT_SECONDS, carelessAutopilot);
     return { screen: 'over', best: world.state.score };
   }
   if (name === 'escaped') {
-    runFor(world, LIMIT_SECONDS, (w) => autopilot(w, 165));
+    // The autopilot does not escape every seed (seed 7 dies 20m short),
+    // so try seeds until one escapes: the shot must show the win screen.
+    for (const seed of [1, 2, 3, 42, 7]) {
+      world.reset(seed);
+      runFor(world, LIMIT_SECONDS, (w) => autopilot(w, 165));
+      if (world.state.escaped) break;
+    }
     return { screen: 'over', best: world.state.score };
   }
   // Title: a few seconds in, so the farmyard is alive behind the menu.
