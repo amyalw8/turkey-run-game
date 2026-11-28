@@ -2,7 +2,7 @@
 // obstacles and pickups ahead, the three stages from farmyard to kitchen.
 // Everything here is pure simulation: no drawing, no sound, no input —
 // step(dt, controls) advances it one frame and reports what happened.
-import { VIEW, WORLD, TURKEY, FARMER, SCORING, SPAWN } from './config.js';
+import { VIEW, WORLD, TURKEY, FARMER, COMBO, SCORING, SPAWN } from './config.js';
 import { makeRandom } from './random.js';
 
 export const EVENT_NONE = 0;
@@ -14,6 +14,8 @@ export const EVENT_PICKUP = 1 << 4;
 export const EVENT_BONUS = 1 << 5;
 export const EVENT_HIDE = 1 << 6;
 export const EVENT_DASH = 1 << 7;
+export const EVENT_LUNGE = 1 << 8; // the farmer wound up a lunge
+export const EVENT_SEARCH = 1 << 9; // the farmer started searching the hay
 
 const GROUND = VIEW.groundY;
 
@@ -52,12 +54,21 @@ export function createWorld(seed = 1) {
       hidden: false,
       inMud: false,
       dustTimer: 0,
+      combo: 0, // chained pickups: 0, 1, 2, 3 — the score multiplier
+      comboTimer: 0, // seconds left to keep the chain alive
     },
     farmer: {
       x: -FARMER.respawnGap,
       throwTimer: FARMER.throwEvery,
       stumbleTimer: 0,
       runPhase: 0,
+      mode: 'chase', // chase | search — searching the wrong haystack
+      searchTimer: 0,
+      searchX: 0, // the wrong haystack he walks to
+      lungeWindup: 0, // telegraph, standing still
+      lungeTimer: 0, // the burst itself
+      lungeCooldown: 0,
+      recoverTimer: 0, // winded after a missed lunge: standing still
     },
     obstacles: [],
     pickups: [],
@@ -156,6 +167,8 @@ export function createWorld(seed = 1) {
     const player = state.player;
     if (player.invulnerable > 0 || state.over) return events;
     state.lives -= 1;
+    player.combo = 0;
+    player.comboTimer = 0;
     player.invulnerable = TURKEY.invulnerableSeconds;
     state.farmer.x += FARMER.stumbleGain;
     burst(player.x + 20, player.y - 30, '#fff3d6', 14, 260);
@@ -202,6 +215,31 @@ export function createWorld(seed = 1) {
         player.hideTimer = TURKEY.hideSeconds;
         player.hidden = true;
         events |= EVENT_HIDE;
+        // The farmer loses the trail and searches the WRONG haystack:
+        // the nearest other one behind the turkey's, so he walks away
+        // from the hiding spot while he looks. If there is none close
+        // by, he turns back and peers into the hay behind him.
+        const ownCentre = near.x + near.width / 2;
+        let wrong = null;
+        let wrongDist = Infinity;
+        for (const h of state.haystacks) {
+          if (h === near) continue;
+          const centre = h.x + h.width / 2;
+          if (centre >= ownCentre) continue; // never ahead of the turkey
+          const d = Math.abs(centre - farmer.x);
+          if (d < wrongDist && d < FARMER.searchReach) {
+            wrongDist = d;
+            wrong = h;
+          }
+        }
+        farmer.mode = 'search';
+        farmer.searchTimer = FARMER.searchSeconds;
+        farmer.searchX = wrong
+          ? wrong.x + wrong.width / 2
+          : farmer.x - 120;
+        farmer.lungeWindup = 0;
+        farmer.lungeTimer = 0;
+        events |= EVENT_SEARCH;
       }
     }
 
@@ -222,6 +260,11 @@ export function createWorld(seed = 1) {
     if (player.dashCooldown > 0) player.dashCooldown -= dt;
     if (player.hideCooldown > 0) player.hideCooldown -= dt;
     if (player.invulnerable > 0) player.invulnerable -= dt;
+    // The combo chain only lives while pickups keep coming.
+    if (player.comboTimer > 0) {
+      player.comboTimer -= dt;
+      if (player.comboTimer <= 0) player.combo = 0;
+    }
     if (!player.hidden) {
       player.x += (dashing ? TURKEY.dashSpeed : speed * pace) * dt;
       player.runPhase += dt * (dashing ? 26 : 16);
@@ -253,25 +296,77 @@ export function createWorld(seed = 1) {
       }
     }
 
-    // --- the farmer: he runs at a share of your speed, faster when you
-    // pull away, slower when he is on your tail, and he throws knives ---
+    // --- the farmer: he chases, searches the hay, and lunges to corner
+    // the turkey when he gets close. He never throws while searching or
+    // winding up a lunge — his hands are busy. ---
     const ratio = state.stage === 2 ? FARMER.kitchenRatio : FARMER.baseRatio;
     const gap = player.x - farmer.x;
     let farmerSpeed = speed * ratio;
     if (gap > FARMER.catchupGap) farmerSpeed *= FARMER.catchupFactor;
     if (gap < FARMER.closeGap) farmerSpeed *= FARMER.closeFactor;
-    // Hidden in the hay, the farmer loses the trail: he all but stops,
-    // peering into the wrong haystack. (At 0.25x he still gained ~190px
-    // over a hide, so hiding barely helped at all.)
-    if (player.hidden) farmerSpeed *= 0.05;
+    if (farmer.lungeCooldown > 0) farmer.lungeCooldown -= dt;
+
+    if (farmer.mode === 'search') {
+      // Walk to the wrong haystack, then stand there looking around.
+      // He gives up when the search runs out and chases again — unless
+      // the turkey is still hidden, in which case he keeps looking.
+      const toTarget = farmer.searchX - farmer.x;
+      if (Math.abs(toTarget) > 14) {
+        farmerSpeed = speed * FARMER.searchSpeed * Math.sign(toTarget);
+      } else {
+        farmerSpeed = 0;
+      }
+      farmer.searchTimer -= dt;
+      if (farmer.searchTimer <= 0) {
+        if (player.hidden) {
+          farmer.searchTimer = FARMER.searchSeconds;
+          farmer.searchX = farmer.x - 120;
+        } else {
+          farmer.mode = 'chase';
+        }
+      }
+    } else if (farmer.lungeWindup > 0) {
+      // The telegraph: planted feet, winding up. The turkey has this
+      // long to dash away or jump.
+      farmerSpeed = 0;
+      farmer.lungeWindup -= dt;
+      if (farmer.lungeWindup <= 0) farmer.lungeTimer = FARMER.lungeSeconds;
+    } else if (farmer.lungeTimer > 0) {
+      // The burst: far faster than the turkey's run, so only a dash or
+      // a jump over him saves the bird.
+      farmerSpeed = speed * FARMER.lungeFactor;
+      farmer.lungeTimer -= dt;
+      if (farmer.lungeTimer <= 0) {
+        // A missed lunge leaves him winded: he stops, bent over,
+        // while the turkey runs past. A caught turkey never sees this.
+        farmer.recoverTimer = FARMER.recoverSeconds;
+        farmer.lungeCooldown = FARMER.lungeCooldown;
+      }
+    } else if (farmer.recoverTimer > 0) {
+      // Winded: standing still, catching his breath.
+      farmerSpeed = 0;
+      farmer.recoverTimer -= dt;
+    } else if (
+      gap < FARMER.lungeGap && gap > 40 &&
+      player.onGround && !player.hidden && player.invulnerable <= 0
+    ) {
+      // Close enough to corner the turkey: wind up the lunge.
+      farmer.lungeWindup = FARMER.lungeWindup;
+      farmerSpeed = 0;
+      events |= EVENT_LUNGE;
+    }
     if (farmer.stumbleTimer > 0) {
       farmer.stumbleTimer -= dt;
       farmerSpeed *= 0.4;
     }
     farmer.x += farmerSpeed * dt;
-    farmer.runPhase += dt * 14;
+    farmer.runPhase += dt * (farmerSpeed === 0 ? 0 : 14);
     farmer.throwTimer -= dt;
-    if (farmer.throwTimer <= 0 && gap < 900 && gap > 60) {
+    if (
+      farmer.throwTimer <= 0 && gap < 900 && gap > 60 &&
+      farmer.mode === 'chase' && farmer.lungeWindup <= 0 &&
+      farmer.lungeTimer <= 0 && farmer.recoverTimer <= 0
+    ) {
       farmer.throwTimer = FARMER.throwEvery * (state.stage === 2 ? 0.7 : 1);
       // A thrown knife has to outrun the turkey: it flies at the turkey's
       // speed plus a margin, flat and fast, so it arrives where the turkey
@@ -300,15 +395,28 @@ export function createWorld(seed = 1) {
     // --- caught? A catch cannot land while the turkey is flashing
     // invulnerable from a stumble, so one mistake never costs two lives.
     // And it cannot land while the turkey is hidden in a haystack: the
-    // whole point of hiding is that the farmer loses the trail. ---
-    if (!player.hidden && player.invulnerable <= 0 && farmer.x + FARMER.width >= player.x + 6) {
+    // whole point of hiding is that the farmer loses the trail. A lunge
+    // never catches a turkey in the air, either — jumping clean over him
+    // is the other way out of a corner — and a winded farmer, bent over
+    // after a missed lunge, cannot catch anything at all. ---
+    if (
+      !player.hidden && player.invulnerable <= 0 && farmer.recoverTimer <= 0 &&
+      farmer.x + FARMER.width >= player.x + 6 &&
+      (farmer.lungeTimer <= 0 || player.onGround)
+    ) {
       state.lives -= 1;
+      player.combo = 0;
+      player.comboTimer = 0;
       burst(player.x + 20, player.y - 30, '#fff3d6', 16, 280);
       if (state.lives <= 0) {
         state.over = true;
         return events | EVENT_CAUGHT;
       }
       farmer.x = player.x - FARMER.respawnGap;
+      farmer.mode = 'chase';
+      farmer.lungeWindup = 0;
+      farmer.lungeTimer = 0;
+      farmer.recoverTimer = 0;
       player.invulnerable = 2;
       events |= EVENT_CAUGHT;
     }
@@ -385,22 +493,26 @@ export function createWorld(seed = 1) {
       }
     }
 
-    // --- pickups ---
+    // --- pickups: chained inside the combo window, each one pays its
+    // value times the chain (x1, x2, x3). A hit anywhere breaks it. ---
     for (const pickup of state.pickups) {
       if (pickup.taken) continue;
       const dx = pickup.x - (player.x + TURKEY.width / 2);
       const dy = pickup.y - (player.y - TURKEY.height / 2);
       if (Math.abs(dx) < 52 && Math.abs(dy) < 58) {
         pickup.taken = true;
+        player.combo = Math.min(player.combo + 1, COMBO.maxMultiplier);
+        player.comboTimer = COMBO.windowSeconds;
+        const mult = player.combo;
         if (pickup.kind === 'pumpkin') {
           // A pumpkin is a feast: points, and a life back if one is missing.
-          state.bonusScore += SCORING.pumpkin;
+          state.bonusScore += SCORING.pumpkin * mult;
           if (state.lives < TURKEY.lives) state.lives += 1;
         } else if (pickup.kind === 'gold') {
           // Golden corn hangs high and pays like a pumpkin, no life back.
-          state.bonusScore += SCORING.goldCorn;
+          state.bonusScore += SCORING.goldCorn * mult;
         } else {
-          state.bonusScore += SCORING.corn;
+          state.bonusScore += SCORING.corn * mult;
         }
         farmer.x -= 120; // a snack buys a little daylight
         burst(pickup.x, pickup.y, pickup.kind === 'pumpkin' ? '#ff9f1c' : '#ffd60a', 10, 160);
