@@ -341,9 +341,17 @@ function drawTurkey(ctx, player, time) {
 function drawFarmer(ctx, farmer, time, gap) {
   const x = farmer.x;
   const y = GROUND;
-  const legSwing = Math.sin(farmer.runPhase) * 12;
+  const searching = farmer.mode === 'search';
+  const windingUp = farmer.lungeWindup > 0;
+  const lunging = farmer.lungeTimer > 0;
+  const recovering = farmer.recoverTimer > 0;
+  // Standing still while he searches, winds up or catches his breath;
+  // legs blur in a lunge.
+  const legSwing = searching || windingUp || recovering ? 0 : Math.sin(farmer.runPhase) * (lunging ? 26 : 12);
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(x, windingUp || recovering ? y + 6 : y); // crouch before the spring, bent over after it
+  if (windingUp) ctx.rotate(-0.08); // leaning back, about to spring
+  if (lunging) ctx.rotate(0.14); // leaning into the burst
   // Legs in overalls.
   ctx.strokeStyle = '#2f4d7a';
   ctx.lineWidth = 9;
@@ -426,12 +434,33 @@ function drawFarmer(ctx, farmer, time, gap) {
   }
   ctx.restore();
   ctx.restore();
-  // "!" when he is closing in.
-  if (gap < 170) {
+  // "?" while he searches the hay, "!!" while he winds up a lunge,
+  // "!" while he is simply closing in.
+  ctx.textAlign = 'center';
+  if (searching) {
+    ctx.fillStyle = '#ffd60a';
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('?', x + 20, y - 150 + Math.sin(time * 4) * 6);
+  } else if (windingUp) {
+    ctx.fillStyle = '#ff2e2e';
+    ctx.font = 'bold 52px sans-serif';
+    ctx.fillText('!!', x + 20, y - 150 + Math.sin(time * 8) * 4);
+  } else if (gap < 170) {
     ctx.fillStyle = '#ff2e2e';
     ctx.font = 'bold 44px sans-serif';
-    ctx.textAlign = 'center';
     ctx.fillText('!', x + 20, y - 150 + Math.sin(time * 8) * 6);
+  }
+  // Speed lines behind a lunging farmer.
+  if (lunging) {
+    ctx.strokeStyle = 'rgba(255, 243, 214, 0.7)';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 3; i += 1) {
+      const ly = y - 40 - i * 26;
+      ctx.beginPath();
+      ctx.moveTo(x - 18, ly);
+      ctx.lineTo(x - 58 - i * 14, ly);
+      ctx.stroke();
+    }
   }
 }
 
