@@ -110,6 +110,16 @@ export const sounds = {
     tone(980, 0.08, 'square', 0.14);
     tone(980, 0.08, 'square', 0.14, 0.12);
   },
+  /** The farmer winds up a lunge: a low growl, rising. */
+  lunge() {
+    tone(110, 0.35, 'sawtooth', 0.3, 0, 220);
+    noise(0.3, 0.12, 0, 500);
+  },
+  /** The farmer loses the trail and starts searching: a puzzled blip. */
+  search() {
+    tone(520, 0.09, 'triangle', 0.22, 0, 660);
+    tone(660, 0.12, 'triangle', 0.2, 0.1, 520);
+  },
   caught() {
     tone(392, 0.22, 'sawtooth', 0.3, 0, 311);
     tone(311, 0.22, 'sawtooth', 0.3, 0.2, 233);
